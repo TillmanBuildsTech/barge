@@ -261,6 +261,9 @@ func (c *Config) validateSSH(i int, t Target, bad func(string, ...any)) {
 	if s.User == "" {
 		bad("targets[%d] (%s): ssh.user is required", i, t.Name)
 	}
+	if s.IdentityFile == "" {
+		bad("targets[%d] (%s): ssh.identity_file is required (ssh-agent support is not implemented yet)", i, t.Name)
+	}
 	if s.Port < 1 || s.Port > 65535 {
 		bad("targets[%d] (%s): ssh.port %d must be 1-65535", i, t.Name, s.Port)
 	}

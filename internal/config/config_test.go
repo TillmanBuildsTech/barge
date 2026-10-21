@@ -88,6 +88,7 @@ func TestLoadRejectsBadInput(t *testing.T) {
 		{"unknown target type", strings.Replace(validYAML, "type: local", "type: carrier-pigeon", 1), "type"},
 		{"ssh target without ssh block", strings.Replace(validYAML, "    ssh:\n      host: prod.example.com\n      user: deploy\n      identity_file: ~/.ssh/id_ed25519\n", "", 1), "ssh"},
 		{"ssh without user", strings.Replace(validYAML, "      user: deploy\n", "", 1), "user"},
+		{"ssh without identity_file", strings.Replace(validYAML, "      identity_file: ~/.ssh/id_ed25519\n", "", 1), "identity_file"},
 		{"ssh bad port", strings.Replace(validYAML, "host: prod.example.com", "host: prod.example.com\n      port: 99999", 1), "port"},
 		{"local target with ssh block", strings.Replace(validYAML, "type: local", "type: local\n    ssh: {host: x, user: y}", 1), "ssh"},
 		{"target references unknown app", strings.Replace(validYAML, "apps: [web]", "apps: [ghost]", 1), "ghost"},
