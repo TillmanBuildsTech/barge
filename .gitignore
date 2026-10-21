@@ -9,3 +9,18 @@ coverage.html
 .idea/
 .vscode/
 # NOTE: go.sum is intentionally committed.
+
+# Build / release artifacts
+/dist/
+*.test
+*.out
+*.prof
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS cruft
+.DS_Store
+Thumbs.db
