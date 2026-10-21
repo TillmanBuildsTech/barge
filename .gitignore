@@ -1,0 +1,11 @@
+/bin/
+coverage.out
+coverage.html
+# local config may hold hostnames/credentials references: never commit
+/barge.yaml
+/config.yaml
+*.pem
+*.key
+.idea/
+.vscode/
+# NOTE: go.sum is intentionally committed.

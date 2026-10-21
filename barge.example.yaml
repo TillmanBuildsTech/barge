@@ -1,0 +1,35 @@
+# barge configuration (schema version 1). Copy to barge.yaml.
+version: 1
+
+# Default container runtime driver. Required, no implicit default.
+# Run `barge drivers` to list what this binary supports.
+runtime:
+  driver: docker
+
+apps:
+  - name: web
+    image: nginx:1.27
+    restart: unless-stopped
+    ports:
+      - {host: 8080, container: 80}
+    env:
+      LOG_LEVEL: info        # do not put secrets here (secret references are planned)
+
+targets:
+  # Deploy on this machine (Linux, macOS, Windows).
+  - name: dev
+    type: local
+    apps: [web]
+
+  # Deploy to a remote Linux host over SSH. Host keys are always verified.
+  - name: prod
+    type: ssh
+    runtime: {driver: podman}     # optional per-target override
+    ssh:
+      host: prod.example.com
+      user: deploy                # required, no default
+      identity_file: ~/.ssh/id_ed25519
+      # port: 22
+      # known_hosts: ~/.ssh/known_hosts
+      # connect_timeout: 30s
+    apps: [web]
