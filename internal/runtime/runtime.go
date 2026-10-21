@@ -32,7 +32,8 @@ type Runtime interface {
 	// if the name is taken; ErrInvalid if the spec fails validation.
 	Create(ctx context.Context, spec domain.ContainerSpec) (string, error)
 	// Start, Stop and Remove take a name or ID and return ErrNotFound if it
-	// does not exist. Start and Stop are idempotent.
+	// does not exist, except that Remove with force=true on a missing
+	// container succeeds (like rm -f). Start and Stop are idempotent.
 	Start(ctx context.Context, id string) error
 	Stop(ctx context.Context, id string, timeout time.Duration) error
 	Remove(ctx context.Context, id string, force bool) error

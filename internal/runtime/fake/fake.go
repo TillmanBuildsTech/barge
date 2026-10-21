@@ -101,6 +101,9 @@ func (r *Runtime) Remove(_ context.Context, ref string, force bool) error {
 	defer r.mu.Unlock()
 	c, err := r.find(ref)
 	if err != nil {
+		if force {
+			return nil
+		}
 		return err
 	}
 	if c.Status == domain.StatusRunning && !force {

@@ -5,6 +5,7 @@
 package runtimetest
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -50,7 +51,7 @@ func Run(t *testing.T, newRT func(t *testing.T) runtime.Runtime) {
 		if err != nil || id == "" {
 			t.Fatalf("Create = %q, %v", id, err)
 		}
-		t.Cleanup(func() { _ = rt.Remove(t.Context(), "c-life", true) })
+		t.Cleanup(func() { _ = rt.Remove(context.WithoutCancel(t.Context()), "c-life", true) })
 
 		st, err := rt.Inspect(ctx, "c-life")
 		if err != nil {
@@ -100,7 +101,7 @@ func Run(t *testing.T, newRT func(t *testing.T) runtime.Runtime) {
 		if _, err := rt.Create(t.Context(), spec("c-dup")); err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = rt.Remove(t.Context(), "c-dup", true) })
+		t.Cleanup(func() { _ = rt.Remove(context.WithoutCancel(t.Context()), "c-dup", true) })
 		if _, err := rt.Create(t.Context(), spec("c-dup")); !errors.Is(err, domain.ErrConflict) {
 			t.Fatalf("want ErrConflict, got %v", err)
 		}
@@ -122,11 +123,17 @@ func Run(t *testing.T, newRT func(t *testing.T) runtime.Runtime) {
 			"Inspect": func() error { _, e := rt.Inspect(ctx, "c-missing"); return e }(),
 			"Start":   rt.Start(ctx, "c-missing"),
 			"Stop":    rt.Stop(ctx, "c-missing", time.Second),
-			"Remove":  rt.Remove(ctx, "c-missing", true),
+			"Remove":  rt.Remove(ctx, "c-missing", false),
 		} {
 			if !errors.Is(err, domain.ErrNotFound) {
 				t.Errorf("%s: want ErrNotFound, got %v", name, err)
 			}
+		}
+	})
+
+	t.Run("forced Remove of a missing container is a no-op", func(t *testing.T) {
+		if err := newRT(t).Remove(t.Context(), "c-missing", true); err != nil {
+			t.Fatalf("want nil (like rm -f), got %v", err)
 		}
 	})
 
@@ -138,7 +145,7 @@ func Run(t *testing.T, newRT func(t *testing.T) runtime.Runtime) {
 				t.Fatal(err)
 			}
 			n := n
-			t.Cleanup(func() { _ = rt.Remove(t.Context(), n, true) })
+			t.Cleanup(func() { _ = rt.Remove(context.WithoutCancel(t.Context()), n, true) })
 		}
 		all, err := rt.List(ctx, map[string]string{"managed-by": "barge-test"})
 		if err != nil || len(all) < 2 {
