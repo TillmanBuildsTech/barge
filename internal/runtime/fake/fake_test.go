@@ -9,5 +9,5 @@ import (
 )
 
 func TestFakeSatisfiesContract(t *testing.T) {
-	runtimetest.Run(t, func(t *testing.T) runtime.Runtime { return fake.New() })
+	runtimetest.Run(t, func(*testing.T) runtime.Runtime { return fake.New() })
 }

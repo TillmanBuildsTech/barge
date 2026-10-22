@@ -38,7 +38,7 @@ type Duration struct{ time.Duration }
 func (d *Duration) UnmarshalYAML(n *yaml.Node) error {
 	var s string
 	if err := n.Decode(&s); err != nil {
-		return err
+		return fmt.Errorf("duration must be a string like \"30s\": %w", err)
 	}
 	v, err := time.ParseDuration(s)
 	if err != nil {

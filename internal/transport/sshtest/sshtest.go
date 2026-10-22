@@ -117,7 +117,7 @@ func New(t testing.TB, user string, authorized ssh.PublicKey, opts ...Option) *S
 		o(cfg, t)
 	}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,9 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 		s.commands = append(s.commands, p.Command)
 		s.mu.Unlock()
 
-		cmd := exec.CommandContext(s.ctx, "sh", "-c", p.Command)
+		// The test server deliberately executes what the client sent through a
+		// real shell, exactly as sshd does; that is what the tests verify.
+		cmd := exec.CommandContext(s.ctx, "sh", "-c", p.Command) //nolint:gosec // intentional
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = ch, ch, ch.Stderr()
 		cmd.WaitDelay = time.Second
 		code := 0

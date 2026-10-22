@@ -76,7 +76,7 @@ func TestShellQuoteGolden(t *testing.T) {
 func TestShellQuoteRoundTripsThroughSh(t *testing.T) {
 	needSh(t)
 	for _, in := range []string{"", "plain", "a b", "it's", `"dq"`, "$(id)", "`id`", ";&|<>", "*?[", "~", "line\nbreak", "tab\there", "ünï😀", `back\slash`, "-n", "--"} {
-		out, err := exec.Command("sh", "-c", "printf %s "+transport.ShellQuote(in)).Output()
+		out, err := exec.CommandContext(t.Context(), "sh", "-c", "printf %s "+transport.ShellQuote(in)).Output()
 		if err != nil || string(out) != in {
 			t.Errorf("%q round-tripped to %q (err=%v)", in, out, err)
 		}
@@ -91,7 +91,7 @@ func FuzzShellQuote(f *testing.F) {
 		if strings.ContainsRune(in, 0) {
 			t.Skip()
 		}
-		out, err := exec.Command("sh", "-c", "printf %s "+transport.ShellQuote(in)).Output()
+		out, err := exec.CommandContext(t.Context(), "sh", "-c", "printf %s "+transport.ShellQuote(in)).Output()
 		if err != nil || string(out) != in {
 			t.Fatalf("%q -> %q (err=%v)", in, out, err)
 		}

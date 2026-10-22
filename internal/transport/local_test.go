@@ -41,7 +41,7 @@ func helper() {
 	os.Exit(0)
 }
 
-func run(t *testing.T, ctx context.Context, mode string, extraArgs []string, cmd transport.Cmd) (transport.Result, error) {
+func run(ctx context.Context, t *testing.T, mode string, extraArgs []string, cmd transport.Cmd) (transport.Result, error) {
 	t.Helper()
 	cmd.Argv = append([]string{os.Args[0]}, extraArgs...)
 	cmd.Env = append(cmd.Env, "BARGE_TEST_HELPER=1", "BARGE_TEST_MODE="+mode)
@@ -51,7 +51,7 @@ func run(t *testing.T, ctx context.Context, mode string, extraArgs []string, cmd
 func TestLocalPassesArgvVerbatim(t *testing.T) {
 	// Metacharacters must reach the child untouched: there is no shell.
 	args := []string{"a b", "$HOME", ";rm -rf /", "`x`", "*"}
-	res, err := run(t, t.Context(), "echo-args", args, transport.Cmd{})
+	res, err := run(t.Context(), t, "echo-args", args, transport.Cmd{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,18 +61,18 @@ func TestLocalPassesArgvVerbatim(t *testing.T) {
 }
 
 func TestLocalEnvAndStdin(t *testing.T) {
-	res, err := run(t, t.Context(), "echo-env", nil, transport.Cmd{Env: []string{"BARGE_SECRET=s3cret"}})
+	res, err := run(t.Context(), t, "echo-env", nil, transport.Cmd{Env: []string{"BARGE_SECRET=s3cret"}})
 	if err != nil || string(res.Stdout) != "s3cret" {
 		t.Fatalf("env: res=%q err=%v", res.Stdout, err)
 	}
-	res, err = run(t, t.Context(), "cat", nil, transport.Cmd{Stdin: strings.NewReader("hello")})
+	res, err = run(t.Context(), t, "cat", nil, transport.Cmd{Stdin: strings.NewReader("hello")})
 	if err != nil || string(res.Stdout) != "hello" {
 		t.Fatalf("stdin: res=%q err=%v", res.Stdout, err)
 	}
 }
 
 func TestLocalNonZeroExit(t *testing.T) {
-	res, err := run(t, t.Context(), "fail", nil, transport.Cmd{})
+	res, err := run(t.Context(), t, "fail", nil, transport.Cmd{})
 	var ee *transport.ExitError
 	if !errors.As(err, &ee) {
 		t.Fatalf("want *ExitError, got %v", err)
@@ -89,7 +89,7 @@ func TestLocalContextCancel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, err := run(t, ctx, "sleep", nil, transport.Cmd{})
+	_, err := run(ctx, t, "sleep", nil, transport.Cmd{})
 	if err == nil {
 		t.Fatal("want error on cancel")
 	}

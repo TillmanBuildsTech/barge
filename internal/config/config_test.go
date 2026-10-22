@@ -134,7 +134,7 @@ func FuzzLoadNeverPanics(f *testing.F) {
 	f.Add(validYAML)
 	f.Add("version: 1")
 	f.Add("{{{{")
-	f.Fuzz(func(t *testing.T, in string) {
+	f.Fuzz(func(_ *testing.T, in string) {
 		_, _ = config.Load(strings.NewReader(in))
 	})
 }

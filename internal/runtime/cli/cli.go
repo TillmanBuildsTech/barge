@@ -194,7 +194,8 @@ func (d *Driver) Inspect(ctx context.Context, id string) (domain.ContainerState,
 // state with one `inspect`, which has an identical JSON shape on docker and
 // podman (unlike `ps --format json`).
 func (d *Driver) List(ctx context.Context, labels map[string]string) ([]domain.ContainerState, error) {
-	args := []string{"ps", "-a", "-q", "--no-trunc"}
+	args := make([]string, 0, 4+2*len(labels))
+	args = append(args, "ps", "-a", "-q", "--no-trunc")
 	for _, k := range sortedKeys(labels) {
 		args = append(args, "--filter", "label="+k+"="+labels[k])
 	}

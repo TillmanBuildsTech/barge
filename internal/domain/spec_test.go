@@ -87,7 +87,7 @@ func TestContainerSpecValidateReportsAllProblems(t *testing.T) {
 func FuzzValidateNeverPanics(f *testing.F) {
 	f.Add("web", "nginx:1")
 	f.Add("-x", "--y")
-	f.Fuzz(func(t *testing.T, name, image string) {
+	f.Fuzz(func(_ *testing.T, name, image string) {
 		_ = domain.ContainerSpec{Name: name, Image: image}.Validate()
 	})
 }

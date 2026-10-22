@@ -148,7 +148,10 @@ func (s *SSH) dropLocked() error {
 	}
 	err := s.client.Close()
 	s.client = nil
-	return err
+	if err != nil {
+		return fmt.Errorf("close ssh connection: %w", err)
+	}
+	return nil
 }
 
 // hostKeyCallback verifies against known_hosts. If the server presented a key
@@ -277,7 +280,7 @@ func (s *SSH) Run(ctx context.Context, c Cmd) (Result, error) {
 	case err = <-done:
 	case <-ctx.Done():
 		_ = sess.Close()
-		<-done // let the goroutine finish before the buffers are read
+		<-done //nolint:errcheck // wait so buffers are quiescent; the error is moot, ctx was cancelled
 		return Result{}, fmt.Errorf("run %s on %s: %w", c.Argv[0], s.addr, ctx.Err())
 	}
 

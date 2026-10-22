@@ -68,7 +68,7 @@ func TestValidate(t *testing.T) {
 		{"unknown driver in target override fails fast", func(t *testing.T) []string {
 			return []string{"validate", "-config", writeConfig(t, strings.Replace(good, "{name: dev, type: local", "{name: dev, type: local, runtime: {driver: nerdctl}", 1))}
 		}, 1, "", "nerdctl"},
-		{"missing file", func(t *testing.T) []string { return []string{"validate", "-config", "/nonexistent/barge.yaml"} }, 1, "", "open config"},
+		{"missing file", func(*testing.T) []string { return []string{"validate", "-config", "/nonexistent/barge.yaml"} }, 1, "", "open config"},
 		{"missing -config flag is a usage error", func(*testing.T) []string { return []string{"validate"} }, 2, "", "-config"},
 	}
 	for _, tt := range tests {
