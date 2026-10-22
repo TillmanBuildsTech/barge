@@ -16,6 +16,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          check-latest: true # go.mod pins 1.26.0; always build with the newest patch (stdlib CVE fixes)
       - run: go vet ./...
       - run: go test -race -shuffle=on ./...
   quality:
@@ -25,6 +26,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          check-latest: true # go.mod pins 1.26.0; always build with the newest patch (stdlib CVE fixes)
       - run: make cover tidy-check cross
       - uses: golangci/golangci-lint-action@v8
         with:
@@ -37,5 +39,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          check-latest: true # go.mod pins 1.26.0; always build with the newest patch (stdlib CVE fixes)
       - run: sudo apt-get update && sudo apt-get install -y podman
       - run: go test -race -tags=integration ./...
