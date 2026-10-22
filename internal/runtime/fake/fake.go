@@ -114,6 +114,26 @@ func (r *Runtime) Remove(_ context.Context, ref string, force bool) error {
 	return nil
 }
 
+// Rename implements runtime.Runtime.
+func (r *Runtime) Rename(_ context.Context, ref, newName string) error {
+	if err := domain.ValidateName(newName); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, err := r.find(ref)
+	if err != nil {
+		return err
+	}
+	if id, taken := r.names[newName]; taken && id != c.ID {
+		return fmt.Errorf("%w: container name %q in use", domain.ErrConflict, newName)
+	}
+	delete(r.names, c.Name)
+	c.Name = newName
+	r.names[newName] = c.ID
+	return nil
+}
+
 // Inspect implements runtime.Runtime.
 func (r *Runtime) Inspect(_ context.Context, ref string) (domain.ContainerState, error) {
 	r.mu.Lock()

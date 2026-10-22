@@ -53,6 +53,14 @@ var (
 	imageRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:/@-]*$`)
 )
 
+// ValidateName checks a container name. The error wraps ErrInvalid.
+func ValidateName(name string) error {
+	if !nameRe.MatchString(name) {
+		return fmt.Errorf("%w: name %q must match %s", ErrInvalid, name, nameRe)
+	}
+	return nil
+}
+
 // Validate reports every problem with the spec at once. The returned error
 // wraps ErrInvalid.
 func (s ContainerSpec) Validate() error {

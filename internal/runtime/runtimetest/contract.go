@@ -137,6 +137,40 @@ func Run(t *testing.T, newRT func(t *testing.T) runtime.Runtime) {
 		}
 	})
 
+	t.Run("Rename", func(t *testing.T) {
+		rt := setup(t)
+		ctx := t.Context()
+		for _, n := range []string{"c-ren-a", "c-ren-b"} {
+			if _, err := rt.Create(ctx, spec(n)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Cleanup(func() {
+			bg := context.WithoutCancel(t.Context())
+			for _, n := range []string{"c-ren-a", "c-ren-b", "c-ren-c"} {
+				_ = rt.Remove(bg, n, true)
+			}
+		})
+		if err := rt.Rename(ctx, "c-ren-a", "c-ren-c"); err != nil {
+			t.Fatal(err)
+		}
+		if st, err := rt.Inspect(ctx, "c-ren-c"); err != nil || st.Name != "c-ren-c" {
+			t.Errorf("renamed container: %+v, %v", st, err)
+		}
+		if _, err := rt.Inspect(ctx, "c-ren-a"); !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("old name should be gone, got %v", err)
+		}
+		if err := rt.Rename(ctx, "c-ren-b", "c-ren-c"); !errors.Is(err, domain.ErrConflict) {
+			t.Errorf("rename onto a taken name: want ErrConflict, got %v", err)
+		}
+		if err := rt.Rename(ctx, "c-ren-missing", "c-ren-z"); !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("rename of missing container: want ErrNotFound, got %v", err)
+		}
+		if err := rt.Rename(ctx, "c-ren-b", "-bad name"); !errors.Is(err, domain.ErrInvalid) {
+			t.Errorf("invalid new name: want ErrInvalid, got %v", err)
+		}
+	})
+
 	t.Run("List filters by every label", func(t *testing.T) {
 		rt := setup(t)
 		ctx := t.Context()

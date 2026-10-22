@@ -6,6 +6,11 @@ version: 1
 runtime:
   driver: docker
 
+# How replacements are rolled out (optional; these are the defaults).
+deploy:
+  settle: 5s          # a new container must stay running this long, else roll back
+  stop_timeout: 10s   # grace period when stopping the old container
+
 apps:
   - name: web
     image: nginx:1.27

@@ -45,7 +45,19 @@ func New(version string, reg *runtime.Registry) *App {
 	return &App{version: version, registry: reg}
 }
 
-const usage = "usage: barge <command>\n\ncommands:\n  version            print the version\n  drivers            list available runtime drivers\n  validate -config F validate a config file\n"
+const usage = `usage: barge <command> [flags]
+
+commands:
+  version                          print the version
+  drivers                          list available runtime drivers
+  validate -config F               validate a config file
+  plan     -config F [-target T] [-json]
+                                   show what apply would change (changes nothing)
+  apply    -config F [-target T] [-json] [-dry-run]
+                                   deploy; -dry-run is the same as plan
+
+exit codes: 0 success, 1 failure, 2 usage error
+`
 
 // Run executes one command and returns the process exit code.
 func (a *App) Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -62,10 +74,46 @@ func (a *App) Run(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		return ExitOK
 	case "validate":
 		return a.validate(ctx, args[1:], stdout, stderr)
+	case "plan":
+		return a.deployCmd(ctx, "plan", args[1:], stdout, stderr)
+	case "apply":
+		return a.deployCmd(ctx, "apply", args[1:], stdout, stderr)
 	default:
 		_, _ = fmt.Fprintf(stderr, "unknown command %q\n%s", args[0], usage)
 		return ExitUsage
 	}
+}
+
+// loadConfig reads and fully validates the config, including that every
+// runtime driver it names exists in this binary, so mistakes surface before
+// anything is contacted. It reports problems on stderr and returns the exit
+// code to use when ok is false.
+func (a *App) loadConfig(path string, stderr io.Writer) (cfg *config.Config, code int, ok bool) {
+	cfg, err := config.LoadFile(path)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+		return nil, ExitFailure, false
+	}
+	known := map[string]bool{}
+	for _, n := range a.registry.Names() {
+		known[n] = true
+	}
+	failed := false
+	check := func(field, driver string) {
+		if !known[driver] {
+			_, _ = fmt.Fprintf(stderr, "error: %s: unknown runtime driver %q (available: %s)\n",
+				field, driver, strings.Join(a.registry.Names(), ", "))
+			failed = true
+		}
+	}
+	check("runtime.driver", cfg.Runtime.Driver)
+	for i, t := range cfg.Targets {
+		check(fmt.Sprintf("targets[%d].runtime.driver", i), t.Runtime.Driver)
+	}
+	if failed {
+		return nil, ExitFailure, false
+	}
+	return cfg, ExitOK, true
 }
 
 func (a *App) validate(_ context.Context, args []string, stdout, stderr io.Writer) int {
@@ -79,32 +127,9 @@ func (a *App) validate(_ context.Context, args []string, stdout, stderr io.Write
 		_, _ = fmt.Fprintln(stderr, "validate: -config is required")
 		return ExitUsage
 	}
-
-	cfg, err := config.LoadFile(*path)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
-		return ExitFailure
-	}
-	// Fail at startup, not mid-deploy: every driver named in the config must
-	// exist in this binary.
-	drivers := map[string]string{"runtime.driver": cfg.Runtime.Driver}
-	for i, t := range cfg.Targets {
-		drivers[fmt.Sprintf("targets[%d].runtime.driver", i)] = t.Runtime.Driver
-	}
-	known := map[string]bool{}
-	for _, n := range a.registry.Names() {
-		known[n] = true
-	}
-	failed := false
-	for field, d := range drivers {
-		if !known[d] {
-			_, _ = fmt.Fprintf(stderr, "error: %s: unknown runtime driver %q (available: %s)\n",
-				field, d, strings.Join(a.registry.Names(), ", "))
-			failed = true
-		}
-	}
-	if failed {
-		return ExitFailure
+	cfg, code, ok := a.loadConfig(*path, stderr)
+	if !ok {
+		return code
 	}
 	_, _ = fmt.Fprintf(stdout, "%s: OK (%d apps, %d targets)\n", *path, len(cfg.Apps), len(cfg.Targets))
 	return ExitOK

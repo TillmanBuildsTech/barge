@@ -29,6 +29,8 @@ const (
 const (
 	DefaultSSHPort           = 22
 	DefaultSSHConnectTimeout = 30 * time.Second
+	DefaultSettle            = 5 * time.Second
+	DefaultStopTimeout       = 10 * time.Second
 )
 
 // Duration is a time.Duration that unmarshals from strings like "30s".
@@ -52,8 +54,18 @@ func (d *Duration) UnmarshalYAML(n *yaml.Node) error {
 type Config struct {
 	Version int        `yaml:"version"`
 	Runtime RuntimeRef `yaml:"runtime"`
+	Deploy  Deploy     `yaml:"deploy"`
 	Apps    []App      `yaml:"apps"`
 	Targets []Target   `yaml:"targets"`
+}
+
+// Deploy tunes how replacements are rolled out.
+type Deploy struct {
+	// Settle is how long a started container must stay running before the
+	// deploy is considered successful; otherwise it is rolled back.
+	Settle Duration `yaml:"settle"`
+	// StopTimeout is the grace period given to the old container to stop.
+	StopTimeout Duration `yaml:"stop_timeout"`
 }
 
 // RuntimeRef selects a container runtime driver by name. Driver names are
@@ -176,6 +188,12 @@ func Load(r io.Reader) (*Config, error) {
 }
 
 func (c *Config) applyDefaults() {
+	if c.Deploy.Settle.Duration == 0 {
+		c.Deploy.Settle.Duration = DefaultSettle
+	}
+	if c.Deploy.StopTimeout.Duration == 0 {
+		c.Deploy.StopTimeout.Duration = DefaultStopTimeout
+	}
 	for i := range c.Targets {
 		t := &c.Targets[i]
 		if t.Runtime.Driver == "" {
@@ -207,12 +225,24 @@ func (c *Config) Validate() error {
 		bad("runtime.driver is required (e.g. docker or podman)")
 	}
 
+	if c.Deploy.Settle.Duration < 0 {
+		bad("deploy.settle must not be negative")
+	}
+	if c.Deploy.StopTimeout.Duration < 0 {
+		bad("deploy.stop_timeout must not be negative")
+	}
+
 	apps := map[string]bool{}
 	for i, a := range c.Apps {
 		if apps[a.Name] {
 			bad("apps[%d]: duplicate app name %q", i, a.Name)
 		}
 		apps[a.Name] = true
+		for k := range a.Labels {
+			if domain.ReservedLabel(k) {
+				bad("apps[%d] (%s): label %q is reserved for barge (managed-by, barge.*)", i, a.Name, k)
+			}
+		}
 		if err := a.Spec().Validate(); err != nil {
 			errs = append(errs, fmt.Errorf("apps[%d] (%s): %w", i, a.Name, err))
 		}

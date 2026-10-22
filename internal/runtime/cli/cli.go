@@ -175,6 +175,18 @@ func (d *Driver) Remove(ctx context.Context, id string, force bool) error {
 	return err
 }
 
+// Rename implements runtime.Runtime.
+func (d *Driver) Rename(ctx context.Context, id, newName string) error {
+	if err := checkArg("container", id); err != nil {
+		return err
+	}
+	if err := domain.ValidateName(newName); err != nil {
+		return err
+	}
+	_, err := d.run(ctx, nil, "rename", "--", id, newName)
+	return err
+}
+
 // Inspect implements runtime.Runtime.
 func (d *Driver) Inspect(ctx context.Context, id string) (domain.ContainerState, error) {
 	if err := checkArg("container", id); err != nil {

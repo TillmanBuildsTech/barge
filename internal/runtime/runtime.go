@@ -37,6 +37,10 @@ type Runtime interface {
 	Start(ctx context.Context, id string) error
 	Stop(ctx context.Context, id string, timeout time.Duration) error
 	Remove(ctx context.Context, id string, force bool) error
+	// Rename gives a container (name or ID) a new name. ErrNotFound if it
+	// does not exist, ErrConflict if the new name is taken, ErrInvalid if the
+	// new name is not a valid container name.
+	Rename(ctx context.Context, id, newName string) error
 	// Inspect takes a name or ID; ErrNotFound if absent.
 	Inspect(ctx context.Context, id string) (domain.ContainerState, error)
 	// List returns all containers (running or not) having every given label.

@@ -285,3 +285,34 @@ func TestExecutorStartFailureIsPropagated(t *testing.T) {
 		t.Fatalf("want ErrUnavailable, got %v", err)
 	}
 }
+
+func TestRenameArgvAndValidation(t *testing.T) {
+	ex := &transporttest.Fake{}
+	rt := newDriver(t, "podman", ex)
+	if err := rt.Rename(t.Context(), "old", "new"); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(ex.Calls[0].Argv, " "); got != "podman rename -- old new" {
+		t.Errorf("argv = %q", got)
+	}
+	for _, c := range [][2]string{{"-x", "new"}, {"old", "-x"}, {"old", "a b"}, {"old", ""}} {
+		if err := rt.Rename(t.Context(), c[0], c[1]); !errors.Is(err, domain.ErrInvalid) {
+			t.Errorf("Rename(%q,%q): want ErrInvalid, got %v", c[0], c[1], err)
+		}
+	}
+	if len(ex.Calls) != 1 {
+		t.Errorf("invalid input must not reach the executor: %v", ex.Calls)
+	}
+}
+
+func TestRenameErrorMapping(t *testing.T) {
+	for stderr, want := range map[string]error{
+		"Error: No such container: old": domain.ErrNotFound,
+		`Error response from daemon: Conflict. The container name "/new" is already in use by container "x"`: domain.ErrConflict,
+	} {
+		ex := &transporttest.Fake{Responses: []transporttest.Response{{Stderr: stderr, ExitCode: 1}}}
+		if err := newDriver(t, "docker", ex).Rename(t.Context(), "old", "new"); !errors.Is(err, want) {
+			t.Errorf("stderr %q: want %v, got %v", stderr, want, err)
+		}
+	}
+}
