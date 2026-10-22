@@ -45,9 +45,10 @@ type canonical struct {
 // that affects the container. Barge stores it as LabelSpecHash and redeploys
 // when it differs. Collection order is significant for slices, not for maps.
 //
-// Note: env values are part of the hash, and the hash is readable by anyone
-// who can inspect the container. Once secret references exist, hash the
-// reference, not the resolved value.
+// Env values, including resolved secrets, are part of the hash so that
+// rotating a secret redeploys the app. That exposes nothing new: the hash is
+// stored as a container label, and anyone who can read labels (docker inspect)
+// can already read the container's environment in plain text.
 func (s ContainerSpec) Hash() string {
 	// A direct conversion: adding a field to ContainerSpec without adding it
 	// to canonical (and so to the hash) is a compile error.

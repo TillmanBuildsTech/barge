@@ -13,6 +13,7 @@ import (
 	"github.com/TillmanBuildsTech/barge/internal/config"
 	"github.com/TillmanBuildsTech/barge/internal/runtime"
 	"github.com/TillmanBuildsTech/barge/internal/runtime/cli"
+	"github.com/TillmanBuildsTech/barge/internal/secrets"
 )
 
 // Exit codes.
@@ -50,7 +51,9 @@ const usage = `usage: barge <command> [flags]
 commands:
   version                          print the version
   drivers                          list available runtime drivers
-  validate -config F               validate a config file
+  validate -config F [-resolve-secrets]
+                                   validate a config file; with -resolve-secrets also
+                                   check every secret reference resolves
   plan     -config F [-target T] [-json]
                                    show what apply would change (changes nothing)
   apply    -config F [-target T] [-json] [-dry-run]
@@ -120,6 +123,7 @@ func (a *App) validate(_ context.Context, args []string, stdout, stderr io.Write
 	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	path := fs.String("config", "", "path to the barge config file")
+	resolve := fs.Bool("resolve-secrets", false, "also check that every secret reference resolves (values are never printed)")
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -132,5 +136,19 @@ func (a *App) validate(_ context.Context, args []string, stdout, stderr io.Write
 		return code
 	}
 	_, _ = fmt.Fprintf(stdout, "%s: OK (%d apps, %d targets)\n", *path, len(cfg.Apps), len(cfg.Targets))
+	if *resolve {
+		n, failed := 0, false
+		for _, app := range cfg.Apps {
+			if _, _, err := (secrets.Resolver{}).Resolve(app); err != nil {
+				_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+				failed = true
+			}
+			n += len(app.Secrets)
+		}
+		if failed {
+			return ExitFailure
+		}
+		_, _ = fmt.Fprintf(stdout, "%d secrets resolved\n", n)
+	}
 	return ExitOK
 }

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"github.com/TillmanBuildsTech/barge/internal/deploy"
 	"github.com/TillmanBuildsTech/barge/internal/domain"
 	"github.com/TillmanBuildsTech/barge/internal/runtime"
+	"github.com/TillmanBuildsTech/barge/internal/secrets"
 	"github.com/TillmanBuildsTech/barge/internal/transport"
 )
 
@@ -62,8 +64,50 @@ func (tr *targetRun) ok() bool {
 	return !tr.applied || !deploy.AnyFailed(tr.results)
 }
 
-func (a *App) planTarget(ctx context.Context, cfg *config.Config, t config.Target) *targetRun {
+// secretCache resolves each app's secrets at most once per run and remembers
+// every value so output can be redacted.
+type secretCache struct {
+	resolver secrets.Resolver
+	byApp    map[string]resolvedApp
+	values   []string
+}
+
+type resolvedApp struct {
+	spec domain.ContainerSpec
+	err  error
+}
+
+func newSecretCache() *secretCache { return &secretCache{byApp: map[string]resolvedApp{}} }
+
+func (c *secretCache) spec(app config.App) (domain.ContainerSpec, error) {
+	if r, ok := c.byApp[app.Name]; ok {
+		return r.spec, r.err
+	}
+	spec, vals, err := c.resolver.Resolve(app)
+	c.byApp[app.Name] = resolvedApp{spec, err}
+	c.values = append(c.values, vals...)
+	return spec, err
+}
+
+func (a *App) planTarget(ctx context.Context, cfg *config.Config, t config.Target, sc *secretCache) *targetRun {
 	tr := &targetRun{target: t, closer: nopCloser{}}
+	// Resolve secrets first: it is local and cheap, and a deploy that cannot
+	// be fully specified should not even open a connection.
+	specs := make([]domain.ContainerSpec, 0, len(t.Apps))
+	var specErrs []error
+	for _, name := range t.Apps {
+		app, _ := cfg.App(name) // existence is guaranteed by config validation
+		spec, err := sc.spec(app)
+		if err != nil {
+			specErrs = append(specErrs, err)
+			continue
+		}
+		specs = append(specs, spec)
+	}
+	if err := errors.Join(specErrs...); err != nil {
+		tr.err = err
+		return tr
+	}
 	exec, closer, err := executorFor(t)
 	if err != nil {
 		tr.err = err
@@ -78,11 +122,6 @@ func (a *App) planTarget(ctx context.Context, cfg *config.Config, t config.Targe
 	if _, err := rt.Ping(ctx); err != nil {
 		tr.err = fmt.Errorf("runtime %s: %w", t.Runtime.Driver, err)
 		return tr
-	}
-	specs := make([]domain.ContainerSpec, 0, len(t.Apps))
-	for _, name := range t.Apps {
-		app, _ := cfg.App(name) // existence is guaranteed by config validation
-		specs = append(specs, app.Spec())
 	}
 	tr.engine = deploy.New(rt, deploy.Options{
 		Settle:      cfg.Deploy.Settle.Duration,
@@ -144,8 +183,9 @@ func (a *App) deployCmd(ctx context.Context, cmd string, args []string, stdout, 
 		}
 	}()
 	allOK := true
+	sc := newSecretCache()
 	for _, t := range targets {
-		tr := a.planTarget(ctx, cfg, t)
+		tr := a.planTarget(ctx, cfg, t, sc)
 		runs = append(runs, tr)
 		allOK = allOK && tr.ok()
 	}
@@ -162,14 +202,18 @@ func (a *App) deployCmd(ctx context.Context, cmd string, args []string, stdout, 
 		}
 	}
 
+	// Everything printed goes through one choke point that masks known secret
+	// values, including text that came from the container CLI or a registry.
+	var buf bytes.Buffer
 	if *asJSON {
-		if err := writeJSON(stdout, cmd, !applying, allOK, runs); err != nil {
+		if err := writeJSON(&buf, cmd, !applying, allOK, runs); err != nil {
 			_, _ = fmt.Fprintf(stderr, "error: write report: %v\n", err)
 			return ExitFailure
 		}
 	} else {
-		writeText(stdout, runs)
+		writeText(&buf, runs)
 	}
+	_, _ = io.WriteString(stdout, secrets.NewRedactor(sc.values).Redact(buf.String()))
 	if !allOK {
 		if !*asJSON {
 			_, _ = fmt.Fprintln(stderr, failureSummary(applying, runs))

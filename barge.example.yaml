@@ -18,7 +18,10 @@ apps:
     ports:
       - {host: 8080, container: 80}
     env:
-      LOG_LEVEL: info        # do not put secrets here (secret references are planned)
+      LOG_LEVEL: info        # plain values only; secrets go below
+    secrets:                 # references, never values: see docs/secrets.md
+      DATABASE_PASSWORD: {env: PROD_DATABASE_PASSWORD}
+      API_KEY: {file: ~/.config/barge/web-api-key}
 
 targets:
   # Deploy on this machine (Linux, macOS, Windows).

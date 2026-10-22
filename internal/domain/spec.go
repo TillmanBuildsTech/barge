@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -91,9 +92,9 @@ func (s ContainerSpec) Validate() error {
 	default:
 		p = append(p, fmt.Sprintf("restart policy %q is not supported", s.Restart))
 	}
-	for k := range s.Env {
-		if k == "" || strings.ContainsAny(k, "=\x00") {
-			p = append(p, fmt.Sprintf("env key %q is invalid", k))
+	for _, k := range sortedEnvKeys(s.Env) {
+		if prob := envNameProblem(k); prob != "" {
+			p = append(p, prob)
 		}
 	}
 	if len(p) == 0 {
@@ -120,4 +121,13 @@ type ContainerState struct {
 	Image  string
 	Status Status
 	Labels map[string]string
+}
+
+func sortedEnvKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

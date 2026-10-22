@@ -9,12 +9,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
+	"sort"
 	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/TillmanBuildsTech/barge/internal/domain"
 )
+
+var envVarRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // SchemaVersion is the only config schema version this build understands.
 const SchemaVersion = 1
@@ -86,6 +90,50 @@ type App struct {
 	Ports   []Port            `yaml:"ports"`
 	Volumes []Volume          `yaml:"volumes"`
 	Restart string            `yaml:"restart"`
+	// Secrets maps container env var names to references; see SecretRef.
+	Secrets map[string]SecretRef `yaml:"secrets"`
+}
+
+// SecretRef points at a secret value without containing it. Exactly one of Env
+// (the name of an environment variable in barge's own environment) or File (a
+// path to a file holding the value) must be set. Resolution happens at plan
+// time, never while loading the config.
+type SecretRef struct {
+	Env  string `yaml:"env"`
+	File string `yaml:"file"`
+}
+
+// UnmarshalYAML decodes a reference strictly and by hand. The default decoder
+// would echo a mistakenly inlined literal into its error message, which would
+// end up in logs; this one never repeats a value. (yaml.v3 also does not apply
+// KnownFields inside custom unmarshalers, so unknown keys are checked here.)
+func (r *SecretRef) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: secrets must be references such as {env: NAME} or {file: PATH}; "+
+			"literal values are not allowed in the config", n.Line)
+	}
+	seen := map[string]bool{}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		key, val := n.Content[i], n.Content[i+1]
+		if seen[key.Value] {
+			return fmt.Errorf("line %d: duplicate key %q in a secret reference", key.Line, key.Value)
+		}
+		seen[key.Value] = true
+		var dst *string
+		switch key.Value {
+		case "env":
+			dst = &r.Env
+		case "file":
+			dst = &r.File
+		default:
+			return fmt.Errorf("line %d: unknown field %q in a secret reference (allowed: env, file)", key.Line, key.Value)
+		}
+		if val.Kind != yaml.ScalarNode {
+			return fmt.Errorf("line %d: %q must be a string", val.Line, key.Value)
+		}
+		*dst = val.Value
+	}
+	return nil
 }
 
 // Port is a published port.
@@ -136,6 +184,16 @@ func (a App) Spec() domain.ContainerSpec {
 		s.Volumes = append(s.Volumes, domain.VolumeMount{Source: v.Source, Target: v.Target, ReadOnly: v.ReadOnly})
 	}
 	return s
+}
+
+// SecretNames returns the app's secret names in sorted order.
+func (a App) SecretNames() []string {
+	names := make([]string, 0, len(a.Secrets))
+	for k := range a.Secrets {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // App looks up an app by name.
@@ -243,6 +301,9 @@ func (c *Config) Validate() error {
 				bad("apps[%d] (%s): label %q is reserved for barge (managed-by, barge.*)", i, a.Name, k)
 			}
 		}
+		for _, sn := range a.SecretNames() {
+			validateSecret(a, i, sn, bad)
+		}
 		if err := a.Spec().Validate(); err != nil {
 			errs = append(errs, fmt.Errorf("apps[%d] (%s): %w", i, a.Name, err))
 		}
@@ -299,5 +360,22 @@ func (c *Config) validateSSH(i int, t Target, bad func(string, ...any)) {
 	}
 	if s.ConnectTimeout.Duration <= 0 {
 		bad("targets[%d] (%s): ssh.connect_timeout must be positive", i, t.Name)
+	}
+}
+
+func validateSecret(a App, i int, name string, bad func(string, ...any)) {
+	where := fmt.Sprintf("apps[%d] (%s): secrets.%s", i, a.Name, name)
+	if err := domain.ValidateEnvName(name); err != nil {
+		bad("%s: %v", where, err)
+	}
+	if _, dup := a.Env[name]; dup {
+		bad("%s: also set in env; a name may come from only one of them", where)
+	}
+	ref := a.Secrets[name]
+	if (ref.Env == "") == (ref.File == "") {
+		bad("%s: set exactly one of env or file", where)
+	}
+	if ref.Env != "" && !envVarRe.MatchString(ref.Env) {
+		bad("%s: env %q is not a valid environment variable name", where, ref.Env)
 	}
 }
