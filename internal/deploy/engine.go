@@ -41,6 +41,9 @@ type Options struct {
 	PollInterval time.Duration
 	// StopTimeout is the grace period for stopping the old version.
 	StopTimeout time.Duration
+	// OnEvent, if set, is called synchronously with progress events while
+	// applying. It must return quickly and must not call back into the Engine.
+	OnEvent func(Event)
 }
 
 // Engine plans and applies deployments against one runtime (one host).

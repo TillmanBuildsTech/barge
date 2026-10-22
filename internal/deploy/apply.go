@@ -72,7 +72,11 @@ func (e *Engine) Apply(ctx context.Context, plan Plan) ([]Result, error) {
 		if err := ctx.Err(); err != nil {
 			r.Outcome, r.Err = OutcomeSkipped, err
 			results = append(results, r)
+			e.done(r)
 			continue
+		}
+		if it.Action != ActionNoop {
+			e.emit(Event{Kind: EventStart, App: r.App, Action: it.Action})
 		}
 		switch it.Action {
 		case ActionNoop:
@@ -87,6 +91,7 @@ func (e *Engine) Apply(ctx context.Context, plan Plan) ([]Result, error) {
 			r.Outcome, r.Err = OutcomeFailed, it.Err
 		}
 		results = append(results, r)
+		e.done(r)
 	}
 	return results, nil
 }
@@ -113,19 +118,23 @@ func fail(r *Result, step string, err error) {
 
 func (e *Engine) create(ctx context.Context, it Item, r *Result) {
 	s := it.Spec
+	e.step(s.Name, "pull image")
 	if err := e.rt.Pull(ctx, s.Image); err != nil {
 		fail(r, "pull image", err)
 		return
 	}
+	e.step(s.Name, "create container")
 	if _, err := e.rt.Create(ctx, labelled(s, s.Name)); err != nil {
 		fail(r, "create container", err)
 		return
 	}
+	e.step(s.Name, "start container")
 	if err := e.rt.Start(ctx, s.Name); err != nil {
 		fail(r, "start container", err)
 		e.discard(ctx, s.Name, r)
 		return
 	}
+	e.step(s.Name, "verify container stays running")
 	if err := e.settle(ctx, s.Name); err != nil {
 		fail(r, "verify container stays running", err)
 		e.discard(ctx, s.Name, r)
@@ -137,6 +146,7 @@ func (e *Engine) create(ctx context.Context, it Item, r *Result) {
 // discard removes a container that was created by a failed first deployment,
 // so a broken half-deployment is never left behind.
 func (e *Engine) discard(ctx context.Context, name string, r *Result) {
+	e.step(name, "remove the failed container")
 	cctx, cancel := detached(ctx)
 	defer cancel()
 	if err := e.rt.Remove(cctx, name, true); err != nil {
@@ -148,10 +158,12 @@ func (e *Engine) discard(ctx context.Context, name string, r *Result) {
 
 func (e *Engine) start(ctx context.Context, it Item, r *Result) {
 	name := it.Spec.Name
+	e.step(name, "start container")
 	if err := e.rt.Start(ctx, name); err != nil {
 		fail(r, "start container", err)
 		return
 	}
+	e.step(name, "verify container stays running")
 	if err := e.settle(ctx, name); err != nil {
 		fail(r, "verify container stays running", err)
 		return
@@ -172,14 +184,17 @@ func (e *Engine) replace(ctx context.Context, it Item, r *Result) {
 	name, newName, oldName := s.Name, s.Name+tempNewSuffix, s.Name+tempOldSuffix
 	oldWasRunning := it.Current != nil && it.Current.Status == domain.StatusRunning
 
+	e.step(name, "pull image")
 	if err := e.rt.Pull(ctx, s.Image); err != nil {
 		fail(r, "pull image", err)
 		return
 	}
+	e.step(name, "prepare staging container")
 	if err := e.clearStaleTemp(ctx, s.Name, newName); err != nil {
 		fail(r, "prepare staging container", err)
 		return
 	}
+	e.step(name, "create new version")
 	if _, err := e.rt.Create(ctx, labelled(s, newName)); err != nil {
 		fail(r, "create new version", err)
 		return
@@ -216,6 +231,7 @@ func (e *Engine) replace(ctx context.Context, it Item, r *Result) {
 		{"verify new version stays running", func() error { return e.settle(ctx, name) }},
 	}
 	for _, step := range steps {
+		e.step(name, step.what)
 		if err := step.do(); err != nil {
 			fail(r, step.what, err)
 			e.rollback(ctx, s, st, r)
@@ -224,6 +240,7 @@ func (e *Engine) replace(ctx context.Context, it Item, r *Result) {
 	}
 
 	r.Outcome = OutcomeApplied
+	e.step(name, "remove previous version")
 	cctx, cancel := detached(ctx)
 	defer cancel()
 	if err := e.rt.Remove(cctx, oldName, true); err != nil {
@@ -257,6 +274,7 @@ type rollbackState struct {
 // rollback restores the previous version. It runs on a context detached from
 // the caller's, so Ctrl-C mid-deploy cannot strand the host half-switched.
 func (e *Engine) rollback(ctx context.Context, s domain.ContainerSpec, st rollbackState, r *Result) {
+	e.step(s.Name, "roll back to the previous version")
 	cctx, cancel := detached(ctx)
 	defer cancel()
 	name, newName, oldName := s.Name, s.Name+tempNewSuffix, s.Name+tempOldSuffix

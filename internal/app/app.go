@@ -37,13 +37,14 @@ func DefaultRegistry() *runtime.Registry {
 
 // App holds the dependencies commands need.
 type App struct {
-	version  string
-	registry *runtime.Registry
+	version   string
+	registry  *runtime.Registry
+	tuiRunner TUIRunner
 }
 
 // New builds an App.
 func New(version string, reg *runtime.Registry) *App {
-	return &App{version: version, registry: reg}
+	return &App{version: version, registry: reg, tuiRunner: defaultTUI}
 }
 
 const usage = `usage: barge <command> [flags]
@@ -58,6 +59,8 @@ commands:
                                    show what apply would change (changes nothing)
   apply    -config F [-target T] [-json] [-dry-run]
                                    deploy; -dry-run is the same as plan
+  tui      -config F [-target T]   interactive plan, review and apply
+                                   (needs a terminal; use plan/apply in scripts)
 
 exit codes: 0 success, 1 failure, 2 usage error
 `
@@ -81,6 +84,8 @@ func (a *App) Run(ctx context.Context, args []string, stdout, stderr io.Writer) 
 		return a.deployCmd(ctx, "plan", args[1:], stdout, stderr)
 	case "apply":
 		return a.deployCmd(ctx, "apply", args[1:], stdout, stderr)
+	case "tui":
+		return a.tuiCmd(ctx, args[1:], stderr)
 	default:
 		_, _ = fmt.Fprintf(stderr, "unknown command %q\n%s", args[0], usage)
 		return ExitUsage
