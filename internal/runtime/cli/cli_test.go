@@ -316,3 +316,12 @@ func TestRenameErrorMapping(t *testing.T) {
 		}
 	}
 }
+
+func TestPodmanUniqueConstraintMapsToErrConflict(t *testing.T) {
+	// Verbatim from a real podman rename onto a taken name (seen in CI).
+	ex := &transporttest.Fake{Responses: []transporttest.Response{{ExitCode: 125,
+		Stderr: "Error: renaming container abc: updating container config table with new configuration for container abc: UNIQUE constraint failed: ContainerConfig.Name"}}}
+	if err := newDriver(t, "podman", ex).Rename(t.Context(), "a", "b"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("want ErrConflict, got %v", err)
+	}
+}

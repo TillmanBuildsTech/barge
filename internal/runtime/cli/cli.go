@@ -59,7 +59,7 @@ func (d *Driver) run(ctx context.Context, env []string, args ...string) (transpo
 		switch {
 		case strings.Contains(low, "no such "):
 			return res, fmt.Errorf("%s %s: %w: %w", d.bin, verb, domain.ErrNotFound, err)
-		case strings.Contains(low, "already in use"):
+		case strings.Contains(low, "already in use"), strings.Contains(low, "unique constraint failed"): // podman rename/create
 			return res, fmt.Errorf("%s %s: %w: %w", d.bin, verb, domain.ErrConflict, err)
 		}
 	}

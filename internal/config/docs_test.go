@@ -10,7 +10,7 @@ import (
 	"github.com/TillmanBuildsTech/barge/internal/config"
 )
 
-var yamlFence = regexp.MustCompile("(?s)```yaml\\n(.*?)```")
+var yamlFence = regexp.MustCompile("(?s)```yaml\\r?\\n(.*?)```")
 
 // Every complete config shown in docs/ (a yaml block starting with
 // "version:") must load. Documentation that does not parse is a bug, and this

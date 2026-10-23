@@ -173,7 +173,7 @@ func TestMissingFileSecretIsReported(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, out, errs := e.run(t, "plan", "-config", e.cfg)
-	if code != 1 || !strings.Contains(out+errs, "API_KEY") || !strings.Contains(out+errs, e.file) {
+	if code != 1 || !strings.Contains(out+errs, "API_KEY") || !strings.Contains(out+errs, filepath.Base(e.file)) {
 		t.Errorf("code=%d\n%s%s", code, out, errs)
 	}
 }
