@@ -42,3 +42,7 @@ cross: ## prove it builds for every supported OS/arch
 		GOOS=$${t%/*} GOARCH=$${t#*/} CGO_ENABLED=0 go build -o /dev/null ./... && echo "ok $$t" || exit 1; done
 
 ci: vet test cover tidy-check cross ## what CI runs (plus lint, vuln)
+
+.PHONY: snapshot
+snapshot: ## local release dry run into ./dist (no signing or SBOM)
+	goreleaser release --snapshot --clean --skip=sign,sbom
