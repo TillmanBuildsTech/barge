@@ -24,7 +24,7 @@ jobs:
       # Gate: a tag never publishes anything that fails tests or has known vulnerabilities.
       - run: go test -race -shuffle=on ./...
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...
-      - uses: sigstore/cosign-installer@v4
+      - uses: sigstore/cosign-installer@v4.1.2
       - uses: anchore/sbom-action/download-syft@v0
       - uses: goreleaser/goreleaser-action@v7
         with:
