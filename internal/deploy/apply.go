@@ -87,6 +87,8 @@ func (e *Engine) Apply(ctx context.Context, plan Plan) ([]Result, error) {
 			e.start(ctx, it, &r)
 		case ActionReplace:
 			e.replace(ctx, it, &r)
+		case ActionCleanup:
+			e.cleanup(ctx, it, &r)
 		case ActionBlocked: // unreachable: refused above
 			r.Outcome, r.Err = OutcomeFailed, it.Err
 		}
@@ -190,9 +192,11 @@ func (e *Engine) replace(ctx context.Context, it Item, r *Result) {
 		return
 	}
 	e.step(name, "prepare staging container")
-	if err := e.clearStaleTemp(ctx, s.Name, newName); err != nil {
-		fail(r, "prepare staging container", err)
-		return
+	for _, tmp := range []string{newName, oldName} {
+		if err := e.clearStaleTemp(ctx, s.Name, tmp); err != nil {
+			fail(r, "prepare staging container", err)
+			return
+		}
 	}
 	e.step(name, "create new version")
 	if _, err := e.rt.Create(ctx, labelled(s, newName)); err != nil {
@@ -246,6 +250,21 @@ func (e *Engine) replace(ctx context.Context, it Item, r *Result) {
 	if err := e.rt.Remove(cctx, oldName, true); err != nil {
 		r.Warnings = append(r.Warnings, fmt.Sprintf("deployed, but could not remove the previous version %q (remove it manually): %v", oldName, err))
 	}
+}
+
+// cleanup removes a leftover previous version next to a healthy, current
+// container. The running container is never touched.
+func (e *Engine) cleanup(ctx context.Context, it Item, r *Result) {
+	name := it.Spec.Name
+	oldName := name + tempOldSuffix
+	e.step(name, "remove leftover previous version")
+	cctx, cancel := detached(ctx)
+	defer cancel()
+	if err := e.rt.Remove(cctx, oldName, true); err != nil {
+		fail(r, "remove leftover previous version "+oldName, err)
+		return
+	}
+	r.Outcome = OutcomeApplied
 }
 
 // clearStaleTemp removes a leftover staging container from an earlier crashed

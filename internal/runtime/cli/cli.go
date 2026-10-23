@@ -79,6 +79,9 @@ func checkArg(kind, v string) error {
 func (d *Driver) Ping(ctx context.Context) (runtime.Info, error) {
 	res, err := d.run(ctx, nil, "version", "--format", "{{.Server.Version}}")
 	if err != nil {
+		if errors.Is(err, domain.ErrUnavailable) {
+			return runtime.Info{}, err
+		}
 		return runtime.Info{}, fmt.Errorf("%w: %w", domain.ErrUnavailable, err)
 	}
 	return runtime.Info{Driver: d.bin, Version: strings.TrimSpace(string(res.Stdout))}, nil

@@ -24,6 +24,7 @@ supported way to automate barge.
    | `~` | replace | the image or configuration changed (a rotated secret counts) |
    | `>` | start | the right version exists but is not running |
    | `=` | unchanged | already up to date |
+   | `-` | cleanup | up to date, but a leftover `NAME-barge-old` backup is removed |
    | `!` | blocked | cannot proceed safely, the reason is shown |
 
 3. **Confirm.** `a` or Enter asks `Apply N changes to M targets? (y/n)`. Only `y`

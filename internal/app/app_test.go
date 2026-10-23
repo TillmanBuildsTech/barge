@@ -95,3 +95,25 @@ func TestUsageErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateWarnsAboutUnusedAppsButSucceeds(t *testing.T) {
+	cfg := writeConfig(t, strings.Replace(good, "targets:", "  - {name: orphan, image: \"x:1\"}\ntargets:", 1))
+	code, out, errs := run(t, "validate", "-config", cfg)
+	if code != 0 || !strings.Contains(out, "OK") || !strings.Contains(errs, `warning: app "orphan" is not used by any target`) {
+		t.Errorf("code=%d out=%q err=%q", code, out, errs)
+	}
+}
+
+func TestEveryConfigProblemLineIsPrefixed(t *testing.T) {
+	cfg := writeConfig(t, "version: 1\nruntime: {driver: docker}\napps: []\ntargets:\n  - {name: a, type: nope}\n  - {name: a, type: nope}\n")
+	_, _, errs := run(t, "validate", "-config", cfg)
+	lines := strings.Split(strings.TrimSpace(errs), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected several problems, got %q", errs)
+	}
+	for _, l := range lines {
+		if !strings.HasPrefix(l, "error: ") {
+			t.Errorf("line without prefix: %q", l)
+		}
+	}
+}

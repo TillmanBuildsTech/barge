@@ -140,6 +140,7 @@ error: the plan has problems (see above)
 | `~` | `replace` | `replace` | A container barge owns exists, but its spec differs (image, command, env including resolved secrets, labels, ports, volumes or restart). The reason is `image changed (OLD -> NEW)` or `configuration changed`. `apply` does a staged swap with rollback. |
 | `>` | `start` | `start` | The container's spec matches but it is not running (reason: `container is exited`, `container is created`, ...). `apply` starts it. |
 | `=` | `noop` | `unchanged` | Spec matches and the container is running (reason: `up to date`). `apply` does nothing for it. |
+| `-` | `cleanup` | `cleanup` | Spec matches and the container is running, but a `NAME-barge-old` backup from an earlier replace is still there (its removal failed). `apply` removes only that backup. See [Interrupted deployments](#interrupted-deployments). |
 | `!` | `blocked` | `blocked` | Barge cannot proceed safely and a person must act. The reason says why. |
 
 An app is `blocked` for one of two reasons:
@@ -259,7 +260,8 @@ names `NAME-barge-new` and `NAME-barge-old` are temporary containers.
 8. Wait `deploy.settle`, re-checking that it is still running. If it exits in
    that time, the replace fails.
 9. Remove `NAME-barge-old`. If this fails, the app is still `applied` and a
-   warning tells you to remove the container yourself.
+   warning tells you so. The next `plan` shows a `cleanup` for that app, and
+   `apply` removes the backup.
 
 Between steps 4 and 7 the app is down, so a replace has a short gap. Zero
 downtime deployments are not supported yet.
@@ -447,6 +449,12 @@ exiting at once.
 
 ## Interrupted deployments
 
+A leftover `NAME-barge-old` is handled automatically only when it is provably
+debris: `NAME` is a running container barge owns, and the leftover is also
+barge's. Then `plan` shows `cleanup` (or `replace`, if the spec also changed)
+and `apply` removes the backup. In every other case the app is blocked, as
+described below, because the backup may be the only good copy.
+
 If barge is killed (or the machine dies) during a replace, after the old
 container was renamed to `NAME-barge-old`, the next `plan` reports the app as
 blocked:
@@ -543,7 +551,7 @@ Messages are shown as barge prints them; text in capitals is a placeholder.
 | `invalid: parse: line N: secrets must be references such as {env: NAME} or {file: PATH}; literal values are not allowed in the config` | A secret was written inline. Use `{env: NAME}` or `{file: PATH}`. |
 | `app "NAME": secret "KEY": not found: environment variable "VAR" is not set` | Export `VAR` in the environment barge runs in. |
 | `... not found: file "PATH" does not exist` | Check the secret file path. |
-| `runtime docker: unavailable: docker version: unavailable: docker not found in PATH: ...` | The container CLI is not installed or not on `PATH` of the machine that runs it (local: yours; SSH: the remote user's `PATH`). |
+| `runtime docker: unavailable: docker not found in PATH: ...` | The container CLI is not installed or not on `PATH` of the machine that runs it (local: yours; SSH: the remote user's `PATH`). |
 | `runtime docker: unavailable: docker version: ...` with the CLI's own message | The CLI is installed but cannot reach its engine (daemon stopped, no permission on the socket). Fix it on that host. |
 | `error: identity file: stat PATH: no such file or directory` | `ssh.identity_file` does not exist. |
 | `invalid: identity file PATH has permissions 0644; it must not be accessible to group or others (chmod 600)` | `chmod 600` the key. Not enforced on Windows. |
@@ -561,5 +569,5 @@ Messages are shown as barge prints them; text in capitals is a placeholder.
 | `error: some apps failed to deploy (see above)` | At least one app `FAILED` or was `SKIPPED` while applying. Read its error and rollback status. |
 | `verify new version stays running: container is exited, expected it to keep running` | The new container crashed within `deploy.settle`. Look at its logs on that host (the failed one was removed by the rollback, so reproduce with the same image and settings), or fix the image and apply again. Raise `deploy.settle` if the app needs longer to prove it is healthy. |
 | `ROLLBACK FAILED: rollback incomplete, manual recovery needed (previous version may be "NAME-barge-old" or "NAME"): ...` | Follow the recovery steps in [Interrupted deployments](#interrupted-deployments). |
-| `warning: deployed, but could not remove the previous version "NAME-barge-old" (remove it manually): ...` | The deploy succeeded. Remove that container yourself; until you do, the next `plan` for the app is blocked. |
+| `warning: deployed, but could not remove the previous version "NAME-barge-old" (remove it manually): ...` | The deploy succeeded. The next `plan` shows `cleanup` for the app and `apply` removes the backup, or remove it yourself. |
 | `error: barge tui needs an interactive terminal on stdin and stdout; ...` | Run `barge tui` in a real terminal, or use `plan` / `apply`. Exit `2`. |

@@ -18,6 +18,7 @@ const (
 	ActionCreate  Action = "create"  // no container yet
 	ActionStart   Action = "start"   // right spec, but not running
 	ActionReplace Action = "replace" // spec changed: staged swap with rollback
+	ActionCleanup Action = "cleanup" // up to date, but remove a leftover previous version
 	ActionBlocked Action = "blocked" // cannot proceed safely; needs a human
 )
 
@@ -67,6 +68,8 @@ func (p Plan) String() string {
 			sym = "~"
 		case ActionStart:
 			sym = ">"
+		case ActionCleanup:
+			sym = "-"
 		case ActionNoop:
 			sym, label = "=", "unchanged"
 		case ActionBlocked:
@@ -93,6 +96,11 @@ func validateSpecs(specs []domain.ContainerSpec) error {
 		for k := range s.Labels {
 			if domain.ReservedLabel(k) {
 				errs = append(errs, fmt.Errorf("%w: app %q: label %q is reserved for barge", domain.ErrInvalid, s.Name, k))
+			}
+		}
+		for _, suf := range []string{tempNewSuffix, tempOldSuffix} {
+			if strings.HasSuffix(s.Name, suf) {
+				errs = append(errs, fmt.Errorf("%w: app %q: names ending in %q are reserved for barge's temporary containers", domain.ErrInvalid, s.Name, suf))
 			}
 		}
 		if seen[s.Name] {
@@ -131,13 +139,21 @@ func (e *Engine) plan(ctx context.Context, s domain.ContainerSpec) (Item, error)
 		return Item{}, err
 	}
 
-	// A leftover from a deployment that died between its rename steps. Barge
-	// cannot know which container is the good one, so it refuses to guess.
+	// A "<name>-barge-old" is either harmless debris or the only good copy of
+	// the app. It is harmless only when the live container is barge's own and
+	// running (so a finished replace failed to delete its backup) and the
+	// backup is barge's too. Anything else, such as a deploy that died between
+	// its rename steps, needs a human: barge refuses to guess which is good.
 	oldName := s.Name + tempOldSuffix
-	if _, err := e.rt.Inspect(ctx, oldName); err == nil {
-		return blocked(s, fmt.Sprintf("a previous deployment was interrupted: container %q still exists; "+
-			"inspect it, then rename it back to %q or remove it, and re-run", oldName, s.Name)), nil
-	} else if !errors.Is(err, domain.ErrNotFound) {
+	staleOld := false
+	switch old, err := e.rt.Inspect(ctx, oldName); {
+	case err == nil:
+		if !exists || !owned(cur, s.Name) || cur.Status != domain.StatusRunning || !owned(old, s.Name) {
+			return blocked(s, fmt.Sprintf("a previous deployment was interrupted: container %q still exists; "+
+				"inspect it, then rename it back to %q or remove it, and re-run", oldName, s.Name)), nil
+		}
+		staleOld = true
+	case !errors.Is(err, domain.ErrNotFound):
 		return Item{}, err
 	}
 
@@ -156,10 +172,16 @@ func (e *Engine) plan(ctx context.Context, s domain.ContainerSpec) (Item, error)
 		} else {
 			item.Reason = "configuration changed"
 		}
+		if staleOld {
+			item.Reason += fmt.Sprintf("; also removes leftover %q", oldName)
+		}
 	case cur.Status != domain.StatusRunning:
 		item.Action, item.Reason = ActionStart, fmt.Sprintf("container is %s", cur.Status)
 	default:
 		item.Action, item.Reason = ActionNoop, "up to date"
+		if staleOld {
+			item.Action, item.Reason = ActionCleanup, fmt.Sprintf("up to date; remove leftover previous version %q", oldName)
+		}
 	}
 	return item, nil
 }

@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -323,5 +324,14 @@ func TestPodmanUniqueConstraintMapsToErrConflict(t *testing.T) {
 		Stderr: "Error: renaming container abc: updating container config table with new configuration for container abc: UNIQUE constraint failed: ContainerConfig.Name"}}}
 	if err := newDriver(t, "podman", ex).Rename(t.Context(), "a", "b"); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("want ErrConflict, got %v", err)
+	}
+}
+
+func TestPingDoesNotStutterUnavailable(t *testing.T) {
+	// A missing binary already arrives wrapped as ErrUnavailable by the transport.
+	ex := &transporttest.Fake{Responses: []transporttest.Response{{Err: fmt.Errorf("%w: docker not found in PATH", domain.ErrUnavailable)}}}
+	_, err := newDriver(t, "docker", ex).Ping(t.Context())
+	if !errors.Is(err, domain.ErrUnavailable) || strings.Count(err.Error(), "unavailable") != 1 {
+		t.Errorf("want exactly one 'unavailable', got %q", err)
 	}
 }

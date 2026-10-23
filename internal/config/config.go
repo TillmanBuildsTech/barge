@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -186,6 +188,24 @@ func (a App) Spec() domain.ContainerSpec {
 	return s
 }
 
+// UnusedApps returns, sorted, the apps that no target deploys.
+func (c *Config) UnusedApps() []string {
+	used := map[string]bool{}
+	for _, t := range c.Targets {
+		for _, a := range t.Apps {
+			used[a] = true
+		}
+	}
+	var out []string
+	for _, a := range c.Apps {
+		if !used[a.Name] {
+			out = append(out, a.Name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // SecretNames returns the app's secret names in sorted order.
 func (a App) SecretNames() []string {
 	names := make([]string, 0, len(a.Secrets))
@@ -255,7 +275,11 @@ func (c *Config) applyDefaults() {
 	for i := range c.Targets {
 		t := &c.Targets[i]
 		if t.Runtime.Driver == "" {
+			own := t.Runtime.Options
 			t.Runtime = c.Runtime
+			if len(own) > 0 {
+				t.Runtime.Options = own // inherit the driver, keep the target's own options
+			}
 		}
 		if t.SSH != nil {
 			if t.SSH.Port == 0 {
@@ -290,12 +314,24 @@ func (c *Config) Validate() error {
 		bad("deploy.stop_timeout must not be negative")
 	}
 
+	// Options are part of the schema so drivers can grow them without a version
+	// bump, but no driver reads any yet. Accepting and ignoring them would
+	// silently drop what the operator asked for, so they are refused.
+	if len(c.Runtime.Options) > 0 {
+		bad("runtime.options is not supported by any driver yet; remove it")
+	}
+
 	apps := map[string]bool{}
 	for i, a := range c.Apps {
 		if apps[a.Name] {
 			bad("apps[%d]: duplicate app name %q", i, a.Name)
 		}
 		apps[a.Name] = true
+		for _, suf := range []string{"-barge-new", "-barge-old"} {
+			if strings.HasSuffix(a.Name, suf) {
+				bad("apps[%d]: name %q must not end in %q, which is reserved for barge's temporary containers", i, a.Name, suf)
+			}
+		}
 		for k := range a.Labels {
 			if domain.ReservedLabel(k) {
 				bad("apps[%d] (%s): label %q is reserved for barge (managed-by, barge.*)", i, a.Name, k)
@@ -331,10 +367,18 @@ func (c *Config) Validate() error {
 		default:
 			bad("targets[%d] (%s): type %q must be %q or %q", i, t.Name, t.Type, TargetLocal, TargetSSH)
 		}
+		if len(t.Runtime.Options) > 0 && !reflect.DeepEqual(t.Runtime.Options, c.Runtime.Options) {
+			bad("targets[%d] (%s): runtime.options is not supported by any driver yet; remove it", i, t.Name)
+		}
+		listed := map[string]bool{}
 		for _, an := range t.Apps {
 			if !apps[an] {
 				bad("targets[%d] (%s): references unknown app %q", i, t.Name, an)
 			}
+			if listed[an] {
+				bad("targets[%d] (%s): lists app %q more than once", i, t.Name, an)
+			}
+			listed[an] = true
 		}
 	}
 	return errors.Join(errs...)

@@ -99,7 +99,10 @@ func (a *App) Run(ctx context.Context, args []string, stdout, stderr io.Writer) 
 func (a *App) loadConfig(path string, stderr io.Writer) (cfg *config.Config, code int, ok bool) {
 	cfg, err := config.LoadFile(path)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+		// A config can have several problems, one per line: prefix each.
+		for _, line := range strings.Split(strings.TrimSpace(err.Error()), "\n") {
+			_, _ = fmt.Fprintf(stderr, "error: %s\n", strings.TrimSpace(line))
+		}
 		return nil, ExitFailure, false
 	}
 	known := map[string]bool{}
@@ -141,6 +144,9 @@ func (a *App) validate(_ context.Context, args []string, stdout, stderr io.Write
 		return code
 	}
 	_, _ = fmt.Fprintf(stdout, "%s: OK (%d apps, %d targets)\n", *path, len(cfg.Apps), len(cfg.Targets))
+	for _, name := range cfg.UnusedApps() {
+		_, _ = fmt.Fprintf(stderr, "warning: app %q is not used by any target, so it will never be deployed\n", name)
+	}
 	if *resolve {
 		n, failed := 0, false
 		for _, app := range cfg.Apps {

@@ -110,7 +110,7 @@ The default container runtime for every target that does not set its own.
 | Field | Type | Required | Default | Rules |
 | --- | --- | --- | --- | --- |
 | `driver` | string | yes | none (no implicit default) | Must name a driver compiled into your binary. Run `barge drivers`; the built-in ones are `docker` and `podman`. |
-| `options` | map of string to string | no | empty | Accepted and passed to the driver. The built-in `docker` and `podman` drivers do not use any options today. |
+| `options` | map of string to string | no | empty | Reserved for future driver settings. No driver reads any option yet, so a non-empty value is rejected with `runtime.options is not supported by any driver yet; remove it`. |
 
 An unknown driver is reported before any host is contacted:
 `error: runtime.driver: unknown runtime driver "rkt" (available: docker, podman)`.
@@ -141,7 +141,7 @@ on every target that deploys it.
 
 | Field | Type | Required | Default | Rules |
 | --- | --- | --- | --- | --- |
-| `name` | string | yes | none | Must match `^[a-zA-Z0-9][a-zA-Z0-9_.-]*$` (cannot start with `-`). Unique across `apps`. |
+| `name` | string | yes | none | Must match `^[a-zA-Z0-9][a-zA-Z0-9_.-]*$` (cannot start with `-`). Unique across `apps`. Must not end in `-barge-new` or `-barge-old`, which barge uses for temporary containers. |
 | `image` | string | yes | none | Must match `^[a-zA-Z0-9][a-zA-Z0-9._:/@-]*$`: no whitespace, cannot start with `-`. |
 | `command` | list of strings | no | image default | Arguments passed after the image; each element is one argument. |
 | `env` | map of string to string | no | empty | Plain, non-secret values. Names must match `^[A-Za-z_][A-Za-z0-9_]*$` and must not be reserved (see below). YAML numbers and booleans are accepted and stored as text. |
@@ -202,7 +202,7 @@ At least one target is required (`targets: at least one target is required`).
 | `type` | string | yes | none | `local` or `ssh`. |
 | `runtime` | object | no | inherits top-level `runtime` | Same fields as [`runtime`](#runtime). |
 | `ssh` | object | required for `ssh`, forbidden for `local` | none | See below. |
-| `apps` | list of app names | no | none | Each name must exist in `apps` (`references unknown app "X"`). Deployed in the order listed. Listing the same app twice passes `validate` but fails `plan` with `duplicate app name`. |
+| `apps` | list of app names | no | none | Each name must exist in `apps` (`references unknown app "X"`) and may be listed only once (`lists app "X" more than once`). Deployed in the order listed. An app that no target lists is never deployed; `barge validate` warns about it. |
 
 A target with no `apps` is valid; `plan` prints `(no apps)` for it.
 
@@ -216,10 +216,9 @@ A target with no `apps` is valid; `plan` prints `(no apps)` for it.
 
 ### Runtime inheritance
 
-A target without `runtime.driver` uses the top-level `runtime` (driver and
-options). A target that sets `runtime.driver` uses its own block entirely; its
-`options` are not merged with the top-level ones. A target `runtime` block that
-sets only `options` and no `driver` is replaced entirely by the top-level one. `barge plan` shows the
+A target without `runtime.driver` uses the top-level `runtime`. A target that
+sets `runtime.driver` uses its own block entirely. (Because `options` are
+currently rejected, only the driver can differ.) `barge plan` shows the
 resolved driver next to each target, for example `target prod (podman, ssh)`.
 
 ### `ssh`

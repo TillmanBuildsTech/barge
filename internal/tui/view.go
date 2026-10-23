@@ -283,6 +283,8 @@ func planSymbol(action string) (sym string, style lipgloss.Style) {
 		return "~", sYellow
 	case "start":
 		return ">", sCyan
+	case "cleanup":
+		return "-", sYellow
 	case "blocked":
 		return "!", sRed
 	default:
