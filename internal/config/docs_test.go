@@ -20,6 +20,7 @@ func TestDocsConfigExamplesLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	files = append(files, "../../README.md", "../../SECURITY.md")
 	if len(files) == 0 {
 		t.Fatal("no docs found: the test is looking in the wrong place")
 	}

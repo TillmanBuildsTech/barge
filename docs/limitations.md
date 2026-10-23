@@ -35,6 +35,15 @@ do yet, so you can plan around it. Nothing in this list is a promise of a date.
   as mounted files, and Vault or cloud KMS sources, are planned. See
   [secrets.md](secrets.md).
 
+## Security hardening
+
+- **Unbounded output capture.** The output of the container tool is read into
+  memory with no size cap, so a hostile or broken host could exhaust memory.
+  A cap is planned.
+- **No image verification.** Images are pulled by tag; signatures are not
+  verified and digests are not pinned. See the [threat model](threat-model.md).
+- **GitHub Actions are pinned by version tag, not commit hash.**
+
 ## Commands and automation
 
 - **No exit code for "changes pending".** `plan` exits 0 when it shows pending
